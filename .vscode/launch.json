@@ -1,0 +1,29 @@
+{
+    "version": "0.2.1",
+    "configurations": [
+        {
+            "name": "Debug digital-clock (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\output\\digital-clock.debug.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "Build digital-clock (Debug)"
+        },
+        {
+            "name": "Debug digital-clock (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\output\\digital-clock.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "Build digital-clock (Release)"
+        }
+    ]
+}

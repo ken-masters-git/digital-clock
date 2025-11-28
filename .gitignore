@@ -1,0 +1,8 @@
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.log
+build/
+output/
+_build_temp.cmd

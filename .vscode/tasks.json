@@ -1,0 +1,119 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Make output dir",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/d",
+                "/c",
+                "if not exist output mkdir output"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build digital-clock (Debug)",
+            "type": "process",
+            "command": "${config:msvc.root}\\bin\\Hostx64\\x64\\cl.exe",
+            "args": [
+                "/nologo",
+                "/std:c++17",
+                "/EHsc",
+                "/DUNICODE",
+                "/D_UNICODE",
+                "/W4",
+                "/Zi",
+                "/MDd",
+                "/Fd:output\\digital-clock.debug.pdb",
+                "/Fe:output\\digital-clock.debug.exe",
+                "/Fo:output\\digital-clock.debug.obj",
+                "/I",
+                "${config:msvc.root}\\include",
+                "/I",
+                "${config:winsdk.dir}\\Include\\${config:winsdk.ver}\\ucrt",
+                "/I",
+                "${config:winsdk.dir}\\Include\\${config:winsdk.ver}\\um",
+                "/I",
+                "${config:winsdk.dir}\\Include\\${config:winsdk.ver}\\shared",
+                "src\\main.cpp",
+                "/link",
+                "/SUBSYSTEM:WINDOWS",
+                "/PDB:output\\digital-clock.debug.pdb",
+                "/LIBPATH:${config:msvc.root}\\lib\\x64",
+                "/LIBPATH:${config:winsdk.dir}\\Lib\\${config:winsdk.ver}\\ucrt\\x64",
+                "/LIBPATH:${config:winsdk.dir}\\Lib\\${config:winsdk.ver}\\um\\x64",
+                "user32.lib",
+                "gdi32.lib",
+                "shell32.lib",
+                "ws2_32.lib",
+                "comdlg32.lib"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": "$msCompile",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": [
+                "Make output dir"
+            ],
+            "detail": "Compile digital clock (Debug) to output\\main.exe using MSVC toolchain."
+        },
+        {
+            "label": "Build digital-clock (Release)",
+            "type": "process",
+            "command": "${config:msvc.root}\\bin\\Hostx64\\x64\\cl.exe",
+            "args": [
+                "/nologo",
+                "/std:c++17",
+                "/EHsc",
+                "/DUNICODE",
+                "/D_UNICODE",
+                "/W4",
+                "/O2",
+                "/MD",
+                "/Fd:output\\digital-clock.pdb",
+                "/Fe:output\\digital-clock.exe",
+                "/Fo:output\\digital-clock.obj",
+                "/I",
+                "${config:msvc.root}\\include",
+                "/I",
+                "${config:winsdk.dir}\\Include\\${config:winsdk.ver}\\ucrt",
+                "/I",
+                "${config:winsdk.dir}\\Include\\${config:winsdk.ver}\\um",
+                "/I",
+                "${config:winsdk.dir}\\Include\\${config:winsdk.ver}\\shared",
+                "src\\main.cpp",
+                "/link",
+                "/SUBSYSTEM:WINDOWS",
+                "/PDB:output\\digital-clock.pdb",
+                "/LIBPATH:${config:msvc.root}\\lib\\x64",
+                "/LIBPATH:${config:winsdk.dir}\\Lib\\${config:winsdk.ver}\\ucrt\\x64",
+                "/LIBPATH:${config:winsdk.dir}\\Lib\\${config:winsdk.ver}\\um\\x64",
+                "user32.lib",
+                "gdi32.lib",
+                "shell32.lib",
+                "ws2_32.lib",
+                "comdlg32.lib"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": "$msCompile",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "dependsOn": [
+                "Make output dir"
+            ],
+            "detail": "Compile digital clock (Release) to output\\main.exe using MSVC toolchain."
+        }
+    ]
+}
