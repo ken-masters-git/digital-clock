@@ -6,6 +6,7 @@
 - Multi-city time display; shows one line per city using UTC offsets.
 - Cities can be added/edited/deleted at runtime via context menu dialogs; list can be persisted to and reloaded from `config/cities.txt`.
 - Time synchronization via UDP NTP client; defaults to `pool.ntp.org` but the server is user-configurable (`config/ntp.txt`) and can be refreshed on demand.
+- Auto detect daylight saving time for cities
 - Pure C++ Win32 with no external dependencies; suitable for Windows 10 desktop.
 
 ## Build & Run
@@ -31,12 +32,13 @@ Window starts topmost at initial position 100x100.
 - Drag: left-click and drag anywhere on the window.
 - Right-click: opens context menu with add/edit/delete city, save/reload config, open config in Notepad, NTP sync, NTP server edit (with Reset), exit.
 - NTP: `Sync time (NTP)` triggers immediate sync; message box shows success/failure (startup sync is silent). Reset restores `pool.ntp.org`.
+- DST: Auto-detects daylight saving for common cities (New York, Los Angeles, Chicago, San Francisco, Toronto, Mexico City, London, Berlin, Paris, Sydney, Auckland) using region rules; other cities use their fixed UTC offset.
 
 ## Config files (created on first save/sync)
 - `config/cities.txt` - one city per line, format `Name|OffsetMinutes` (offset in minutes from UTC, e.g., `Shanghai|480`). Invalid lines are ignored. Defaults: Auckland (+720), Shanghai (+480).
 - `config/ntp.txt` - single line with server host or IP. Defaults to `pool.ntp.org` if missing/empty (Reset uses this default).
 
 ## Runtime behavior
-- Display updates every second; NTP sync kicks off at startup and when requested. When NTP data is available, the clock keeps time using monotonic ticks and falls back to `GetSystemTimeAsFileTime` if NTP is absent.
+- Display updates every second; NTP sync kicks off at startup and when requested. When NTP data is available, the clock keeps time using monotonic ticks and falls back to `GetSystemTimeAsFileTime` if NTP is absent. DST adjustment adds +60 minutes when active per city rule above.
 - Window styles: topmost, tool window, layered (slightly transparent); custom metal-gray frame is drawn inside the client area.
 - Colors: dark background with green text for readability.

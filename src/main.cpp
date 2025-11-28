@@ -11,6 +11,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <algorithm>
+#include <cwctype>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -97,6 +98,12 @@ static std::string ToUtf8(const std::wstring& wide) {
     std::string result(sizeNeeded, 0);
     WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), result.data(), sizeNeeded, nullptr, nullptr);
     return result;
+}
+
+static std::wstring ToLower(const std::wstring& input) {
+    std::wstring out = input;
+    std::transform(out.begin(), out.end(), out.begin(), [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
+    return out;
 }
 
 static void LoadDefaultCities() {
@@ -336,9 +343,168 @@ static constexpr WORD kNameEditId = 2001;
 static constexpr WORD kOffsetEditId = 2002;
 static constexpr WORD kSearchButtonId = 2003;
 
-static int GetDstAdjustmentMinutes(const CityInfo&, ULONGLONG) {
-    // DST adjustments are currently disabled for simplicity.
-    return 0;
+enum class DstScheme {
+    None,
+    NorthAmerica, // second Sun Mar 02:00 -> first Sun Nov 02:00 (US/Canada)
+    Europe,       // last Sun Mar 01:00 UTC -> last Sun Oct 01:00 UTC
+    Australia,    // first Sun Oct 02:00 -> first Sun Apr 03:00 (AU east)
+    NewZealand    // last Sun Sep 02:00 -> first Sun Apr 03:00 (NZ)
+};
+
+struct DstRule {
+    int startMonth;
+    int startWeek;     // 1-based; -1 = last
+    int startWeekday;  // 0=Sunday
+    int startHour;     // local (or UTC if timesAreUtc)
+    bool startInDst;   // offset includes DST at start boundary
+    int endMonth;
+    int endWeek;
+    int endWeekday;
+    int endHour;
+    bool endInDst;     // offset includes DST at end boundary
+    int adjustMinutes; // minutes to add when DST is active
+    bool timesAreUtc;  // transitions expressed in UTC (EU)
+};
+
+static const DstRule kDstNorthAmerica{3, 2, 0, 2, false, 11, 1, 0, 2, true, 60, false};
+static const DstRule kDstEurope{3, -1, 0, 1, false, 10, -1, 0, 1, false, 60, true};
+static const DstRule kDstAustralia{10, 1, 0, 2, false, 4, 1, 0, 3, true, 60, false};
+static const DstRule kDstNewZealand{9, -1, 0, 2, false, 4, 1, 0, 3, true, 60, false};
+
+static bool IsLeapYear(int year) {
+    return (year % 4 == 0) && ((year % 100 != 0) || (year % 400 == 0));
+}
+
+static int DaysInMonth(int year, int month) {
+    static const int kDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month == 2 && IsLeapYear(year)) {
+        return 29;
+    }
+    return kDays[month - 1];
+}
+
+static int ResolveWeekdayOfMonth(int year, int month, int week, int weekday) {
+    SYSTEMTIME firstDay = {};
+    firstDay.wYear = static_cast<WORD>(year);
+    firstDay.wMonth = static_cast<WORD>(month);
+    firstDay.wDay = 1;
+
+    FILETIME ft = {};
+    SystemTimeToFileTime(&firstDay, &ft);
+    FileTimeToSystemTime(&ft, &firstDay); // fills wDayOfWeek
+
+    int firstDow = static_cast<int>(firstDay.wDayOfWeek);
+    int daysInMonth = DaysInMonth(year, month);
+
+    if (week > 0) {
+        int day = 1 + ((weekday - firstDow + 7) % 7) + (week - 1) * 7;
+        return std::min(day, daysInMonth);
+    }
+
+    // last occurrence
+    int lastDow = (firstDow + daysInMonth - 1) % 7;
+    int day = daysInMonth - ((lastDow - weekday + 7) % 7);
+    return day;
+}
+
+static ULONGLONG LocalToUtcFileTime(const SYSTEMTIME& local, int offsetMinutes) {
+    FILETIME ftLocal = {};
+    SystemTimeToFileTime(&local, &ftLocal);
+    ULARGE_INTEGER ui = {};
+    ui.LowPart = ftLocal.dwLowDateTime;
+    ui.HighPart = ftLocal.dwHighDateTime;
+    LONGLONG ticks = static_cast<LONGLONG>(ui.QuadPart) - static_cast<LONGLONG>(offsetMinutes) * 60 * 10000000ll;
+    return static_cast<ULONGLONG>(ticks);
+}
+
+static ULONGLONG BuildTransitionUtc(const DstRule& rule, bool isStart, int year, int baseOffsetMinutes) {
+    int month = isStart ? rule.startMonth : rule.endMonth;
+    int week = isStart ? rule.startWeek : rule.endWeek;
+    int weekday = isStart ? rule.startWeekday : rule.endWeekday;
+    int hour = isStart ? rule.startHour : rule.endHour;
+    bool inDst = isStart ? rule.startInDst : rule.endInDst;
+
+    int day = ResolveWeekdayOfMonth(year, month, week, weekday);
+
+    SYSTEMTIME local = {};
+    local.wYear = static_cast<WORD>(year);
+    local.wMonth = static_cast<WORD>(month);
+    local.wDay = static_cast<WORD>(day);
+    local.wHour = static_cast<WORD>(hour);
+
+    int offset = 0;
+    if (!rule.timesAreUtc) {
+        offset = baseOffsetMinutes + (inDst ? rule.adjustMinutes : 0);
+    }
+
+    return LocalToUtcFileTime(local, offset);
+}
+
+static DstScheme GetDstScheme(const CityInfo& city) {
+    std::wstring lower = ToLower(city.name);
+    if (lower == L"new york" || lower == L"los angeles" || lower == L"chicago" ||
+        lower == L"san francisco" || lower == L"toronto" || lower == L"mexico city") {
+        return DstScheme::NorthAmerica;
+    }
+    if (lower == L"london" || lower == L"berlin" || lower == L"paris") {
+        return DstScheme::Europe;
+    }
+    if (lower == L"sydney") {
+        return DstScheme::Australia;
+    }
+    if (lower == L"auckland") {
+        return DstScheme::NewZealand;
+    }
+    return DstScheme::None;
+}
+
+static int GetDstAdjustmentMinutes(const CityInfo& city, ULONGLONG utcFileTime) {
+    DstScheme scheme = GetDstScheme(city);
+    if (scheme == DstScheme::None) {
+        return 0;
+    }
+
+    SYSTEMTIME utc = {};
+    FILETIME ft = {};
+    ft.dwLowDateTime = static_cast<DWORD>(utcFileTime & 0xFFFFFFFF);
+    ft.dwHighDateTime = static_cast<DWORD>((utcFileTime >> 32) & 0xFFFFFFFF);
+    FileTimeToSystemTime(&ft, &utc);
+
+    const DstRule* rule = nullptr;
+    switch (scheme) {
+    case DstScheme::NorthAmerica: rule = &kDstNorthAmerica; break;
+    case DstScheme::Europe: rule = &kDstEurope; break;
+    case DstScheme::Australia: rule = &kDstAustralia; break;
+    case DstScheme::NewZealand: rule = &kDstNewZealand; break;
+    default: break;
+    }
+    if (!rule) {
+        return 0;
+    }
+
+    ULONGLONG startUtc = 0;
+    ULONGLONG endUtc = 0;
+    if (rule->startMonth > rule->endMonth) {
+        // Southern hemisphere style, spans year boundary.
+        int startYear = (utc.wMonth <= rule->endMonth) ? utc.wYear - 1 : utc.wYear;
+        startUtc = BuildTransitionUtc(*rule, true, startYear, city.offsetMinutes);
+        endUtc = BuildTransitionUtc(*rule, false, startYear + 1, city.offsetMinutes);
+    } else {
+        startUtc = BuildTransitionUtc(*rule, true, utc.wYear, city.offsetMinutes);
+        endUtc = BuildTransitionUtc(*rule, false, utc.wYear, city.offsetMinutes);
+    }
+
+    if (startUtc == 0 || endUtc == 0) {
+        return 0;
+    }
+
+    bool active = false;
+    if (startUtc < endUtc) {
+        active = utcFileTime >= startUtc && utcFileTime < endUtc;
+    } else {
+        active = utcFileTime >= startUtc || utcFileTime < endUtc;
+    }
+    return active ? rule->adjustMinutes : 0;
 }
 
 struct CitySuggestion {
